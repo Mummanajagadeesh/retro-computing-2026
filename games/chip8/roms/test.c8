@@ -1,0 +1,107 @@
+; test.c8 -- Chip-8 self-test for the retro_fpga console.
+; Exercises LD/ADD/ALU/shifts/skips/BCD/Fx55/Fx65/call/ret/draw-collide.
+; V0 counts failures. Draws CHECK at (28,13) when V0==0, else CROSS.
+; Verdict pixels: (28,13) OFF + 8 lit pixels = pass; ON + 20 = fail.
+
+    org 0x200
+    dw 0x6000            ; V0 = 0 (fail count)
+
+; T1: LD/ADD immediate: V1 = 5 + 10 = 15
+    dw 0x6105, 0x710A
+    dw 0x310F            ; skip if V1 == 15
+    dw 0x7001            ; V0 += 1
+
+; T2: 8xy4 carry: 200 + 100 = 44 carry 1
+    dw 0x62C8, 0x6364, 0x8234
+    dw 0x322C            ; skip if V2 == 44
+    dw 0x7001
+    dw 0x3F01            ; skip if VF == 1
+    dw 0x7001
+
+; T3: 8xy5 borrow: 10 - 20 = 246 borrow (VF 0)
+    dw 0x640A, 0x6514, 0x8455
+    dw 0x34F6            ; skip if V4 == 246
+    dw 0x7001
+    dw 0x3F00            ; skip if VF == 0
+    dw 0x7001
+
+; T4: 8xy6 shift (modern: Vx in place): 3 >> 1 = 1, VF 1
+    dw 0x6603, 0x8606
+    dw 0x3601            ; skip if V6 == 1
+    dw 0x7001
+    dw 0x3F01
+    dw 0x7001
+
+; T5: OR/AND/XOR of F0, 3C -> FC / 30 / CC
+    dw 0x67F0, 0x683C, 0x8781
+    dw 0x37FC
+    dw 0x7001
+    dw 0x67F0, 0x8782
+    dw 0x3730
+    dw 0x7001
+    dw 0x67F0, 0x8783
+    dw 0x37CC
+    dw 0x7001
+
+; T6: 8xy7 SUBN: V9 = VA - V9 = 25 - 10 = 15, VF 1
+    dw 0x690A, 0x6A19, 0x89A7
+    dw 0x390F
+    dw 0x7001
+    dw 0x3F01
+    dw 0x7001
+
+; T7: 9xy0 SNE regs: 15 != 25, must skip
+    dw 0x99A0
+    dw 0x7001
+
+; T8: I + BCD 123 -> mem[300..302] = 1,2,3 (V0 saved, VD counts)
+    dw 0xA310, 0xF055   ; save V0 at 0x310 (x=0: one byte)
+    dw 0x6D00           ; VD = 0
+    dw 0x6B7B, 0xA300, 0xFB33
+    dw 0xA300, 0xF265   ; V0..V2 = 1,2,3
+    dw 0x3001
+    dw 0x7D01
+    dw 0x3102
+    dw 0x7D01
+    dw 0x3203
+    dw 0x7D01
+    dw 0xA310, 0xF065   ; restore V0
+    dw 0x80D4           ; V0 += VD
+
+; T9: call/ret: subroutine sets VE = 0x42
+    dw 0x2000+sub
+    dw 0x3E42
+    dw 0x7001
+
+; T10: draw font '0' via VE at (VC,VD)=(0,0) twice: VF 0 then 1.
+; Screen is still clear here (T1-T9 draw nothing), and the double draw
+; erases, so the result sprite below lands on a clean screen.
+    dw 0x6E00, 0xFE29
+    dw 0x6C00, 0x6D00
+    dw 0xDCD5
+    dw 0x3F00
+    dw 0x7001
+    dw 0xDCD5
+    dw 0x3F01
+    dw 0x7001
+
+; verdict
+    dw 0x3000            ; skip if V0 == 0 (pass)
+    dw 0x1000+fail
+    dw 0x6C1C, 0x6D0D   ; VC = 28, VD = 13
+    dw 0xA000+check
+    dw 0xDCD5
+    dw 0x1000+done
+fail:
+    dw 0x6C1C, 0x6D0D
+    dw 0xA000+cross
+    dw 0xDCD5
+done:
+    dw 0x1000+done      ; halt (spin)
+sub:
+    dw 0x6E42
+    dw 0x00EE
+check:
+    db 0x01, 0x02, 0x84, 0x48, 0x30
+cross:
+    db 0xC3, 0x66, 0x3C, 0x66, 0xC3

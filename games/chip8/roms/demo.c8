@@ -1,0 +1,49 @@
+; demo.c8 -- bouncing ball attract demo for the retro_fpga console.
+; V0=x, V1=y, V3=xdir (0=right,1=left), V4=ydir (0=down,1=up), VC=divider.
+; Moves one pixel every 6th loop (~10 px/s). Erase-move-draw each loop.
+
+    org 0x200
+    dw 0x6010, 0x610C     ; x = 16, y = 12
+    dw 0x6300, 0x6400     ; dirs: right, down
+    dw 0x6C00             ; VC = 0
+    dw 0xA000+ball
+    dw 0xD018             ; initial draw, 8x8 at (V0,V1)
+loop:
+    dw 0xD018             ; erase at old pos
+    dw 0x7C01             ; VC += 1
+    dw 0x3C06             ; if VC == 6 skip the move
+    dw 0x1000+draw
+    dw 0x6C00
+    ; --- move x (range 0..56) ---
+    dw 0x3300             ; if xdir == 0 skip
+    dw 0x1000+x_left
+    dw 0x7001             ; x += 1
+    dw 0x3038             ; if x == 56 skip
+    dw 0x1000+x_done
+    dw 0x6301             ; xdir = left
+    dw 0x1000+x_done
+x_left:
+    dw 0x70FF             ; x -= 1
+    dw 0x3000             ; if x == 0 skip
+    dw 0x1000+x_done
+    dw 0x6300             ; xdir = right
+x_done:
+    ; --- move y (range 0..24) ---
+    dw 0x3400
+    dw 0x1000+y_up
+    dw 0x7101
+    dw 0x3118             ; y == 24?
+    dw 0x1000+y_done
+    dw 0x6401
+    dw 0x1000+y_done
+y_up:
+    dw 0x71FF
+    dw 0x3100
+    dw 0x1000+y_done
+    dw 0x6400
+y_done:
+draw:
+    dw 0xD018
+    dw 0x1000+loop
+ball:
+    db 0x3C, 0x7E, 0xFF, 0xFF, 0xFF, 0xFF, 0x7E, 0x3C

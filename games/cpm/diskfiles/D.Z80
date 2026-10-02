@@ -1,0 +1,897 @@
+                org 0100h
+BIOSaddr        equ 0001h
+BDOS            equ 0005h
+BDOSaddr        equ 0006h
+fcb1            equ 005ch
+fcb1name        equ 005dh
+fcb1ext         equ 0068h
+fcb2name        equ 006dh
+fcb2al          equ 007dh
+SEP             equ 7ch
+; ---------------------------------------------------------------------------
+
+start:
+                ld      hl, 0
+                add     hl, sp
+                ld      (Stack), hl
+                ld      sp, Stack
+                ld      a, (fcb2name)
+                ld      (SopFlg), a
+                sub     a
+                ld      (CPMuser), a
+                ld      (LineCounter), a
+                ld      c, 12
+                call    BDOS
+                ld      (CPMversion), hl
+                ld      a, l
+                or      a
+                jp      z, loc_161
+                ld      e, 0FFh
+                ld      c, 32
+                call    BDOS
+                ld      (CPMuser), a
+                ld      a, (MPMflag)
+                or      a
+                jp      z, loc_161
+                ld      de, aDirectory  ; "Directory for user $"
+                ld      c, 9
+                call    BDOS
+                ld      a, (CPMuser)
+                cp      0Ah
+                jp      c, loc_14F
+                ld      a, 31h ; '1'
+                call    Type
+                ld      a, (CPMuser)
+                sub     0Ah
+
+loc_14F:                                ; ...
+                add     a, 30h ; '0'
+                call    Type
+                ld      de, 243h
+                ld      c, 9
+                call    BDOS
+                ld      a, 1
+                ld      (LineCounter), a
+
+loc_161:                                ; ...
+                ld      hl, fcb1
+                ld      a, (hl)
+                or      a
+                jp      nz, loc_172
+                ld      c, 25
+                call    BDOS
+                inc     a
+                ld      (fcb1), a
+
+loc_172:                                ; ...
+                add     a, 40h ; '@'
+                ld      (aTotalOf), a   ; " : Total of $"
+                ld      hl, fcb1name
+                ld      a, (hl)
+                cp      20h ; ' '
+                jp      nz, loc_189
+                ld      b, 0Bh
+
+loc_182:                                ; ...
+                ld      (hl), 3Fh ; '?'
+                inc     hl
+                dec     b
+                jp      nz, loc_182
+
+loc_189:                                ; ...
+                ld      a, 3Fh ; '?'
+                ld      (fcb1ext), a
+                ld      a, (fcb1)
+                dec     a
+                ld      e, a
+                ld      c, 14
+                call    BDOS
+                sub     a
+                ld      (fcb1), a
+                ld      a, (CPMversion)
+                or      a
+                jp      z, CPMv14
+                ld      c, 31
+                call    BDOS
+                inc     hl
+                inc     hl
+                ld      a, (hl)
+                ld      (BlkShift), a
+                inc     hl
+                ld      a, (hl)
+                ld      (BlkMask), a
+                inc     hl
+                inc     hl
+                ld      e, (hl)
+                inc     hl
+                ld      d, (hl)
+                ex      de, hl
+                ld      (BlockMax), hl
+                ex      de, hl
+                inc     hl
+                ld      e, (hl)
+                inc     hl
+                ld      d, (hl)
+                ex      de, hl
+                ld      (DirMax), hl
+                jp      loc_1E7
+; ---------------------------------------------------------------------------
+
+CPMv14:                                 ; ...
+                ld      hl, (BDOSaddr)
+                ld      l, 3Bh ; ';'
+                ld      e, (hl)
+                ld      d, 0
+                push    de
+                inc     hl
+                ld      a, (hl)
+                ld      (BlkShift), a
+                inc     hl
+                ld      a, (hl)
+                ld      (BlkMask), a
+                inc     hl
+                ld      e, (hl)
+                ld      d, 0
+                ex      de, hl
+                ld      (BlockMax), hl
+                pop     hl
+                ld      (DirMax), hl
+
+loc_1E7:                                ; ...
+                inc     hl
+                add     hl, hl
+                ld      de, Order
+                add     hl, de
+                ld      (TBloc), hl
+                ld      (NextT), hl
+                ex      de, hl
+                ld      hl, (BDOSaddr)
+                ld      a, e
+                sub     l
+                ld      a, d
+                sbc     a, h
+                jp      nc, OutMem
+                ld      c, 17
+                ld      de, 5Ch ; '\'
+                call    BDOS
+                inc     a
+                jp      nz, Some
+
+None:                                   ; ...
+                ld      de, aFileNotFound ; "File not found.$"
+                ld      a, (MPMflag)
+                or      a
+                jp      nz, ERexit1
+                call    ERexit
+; ---------------------------------------------------------------------------
+aNoFile:        db 'NO FILE$'
+aFileNotFound:  db 'File not found.$'   ; ...
+aDirectory:     db 'Directory for user $' ; ...
+cflf:           db ':',0Dh,0Ah,'$'
+; ---------------------------------------------------------------------------
+
+MoreDir:                                ; ...
+                ld      c, 12h
+                ld      de, 5Ch ; '\'
+                call    BDOS
+                inc     a
+                jp      z, SPrint
+
+Some:                                   ; ...
+                dec     a
+                and     3
+                add     a, a
+                add     a, a
+                add     a, a
+                add     a, a
+                add     a, a
+                ld      hl, 81h
+                add     a, l
+                add     a, 9
+                ld      l, a
+                ld      a, (SopFlg)
+                cp      53h ; 'S'
+                jp      z, SysFok
+                ld      a, (hl)
+                and     80h
+                jp      nz, MoreDir
+
+SysFok:                                 ; ...
+                ld      a, l
+                sub     0Ah
+                ld      l, a
+                ld      a, (CPMuser)
+                cp      (hl)
+                jp      nz, MoreDir
+                inc     hl
+                ex      de, hl
+                ld      hl, (NextT)
+                ld      b, 0Ch
+
+Tmove:                                  ; ...
+                ld      a, (de)
+                and     7Fh
+                ld      (hl), a
+                inc     de
+                inc     hl
+                dec     b
+                jp      nz, Tmove
+                inc     de
+                inc     de
+                ld      a, (de)
+                ld      (hl), a
+                inc     hl
+                ld      (NextT), hl
+                ex      de, hl
+                ld      hl, (Count)
+                inc     hl
+                ld      (Count), hl
+                ld      hl, 0Dh
+                add     hl, de
+                ex      de, hl
+                ld      hl, (BDOSaddr)
+                ld      a, e
+                sub     l
+                ld      a, d
+                sbc     a, h
+                jp      c, MoreDir
+
+OutMem:                                 ; ...
+                call    ERexit
+; ---------------------------------------------------------------------------
+aOutOfMemory:   db 'Out of',9,'memory.',0Dh,0Ah,'$'
+; ---------------------------------------------------------------------------
+
+SPrint:                                 ; ...
+                ld      hl, (Count)
+                ld      a, l
+                or      h
+                jp      z, None
+                push    hl
+                ld      hl, (TBloc)
+                ex      de, hl
+                ld      hl, Order
+                ld      bc, 0Dh
+
+BldOrd:                                 ; ...
+                ld      (hl), e
+                inc     hl
+                ld      (hl), d
+                inc     hl
+                ex      de, hl
+                add     hl, bc
+                ex      de, hl
+                ex      (sp), hl
+                dec     hl
+                ld      a, l
+                or      h
+                ex      (sp), hl
+                jp      nz, BldOrd
+                pop     hl
+                ld      hl, (Count)
+                ld      (Scount), hl
+                dec     hl
+                ld      a, l
+                or      h
+                jp      z, Done
+
+Sort:
+                ld      hl, (Scount)
+
+L0:                                     ; ...
+                or      a
+                ld      a, h
+                rra
+                ld      h, a
+                ld      a, l
+                rra
+                ld      l, a
+                or      h
+                jp      z, Done
+                ld      a, l
+                or      1
+                ld      l, a
+                ld      (Gap), hl
+                inc     hl
+
+L2:                                     ; ...
+                ld      (vI), hl
+                ex      de, hl
+                ld      hl, (Gap)
+                ld      a, e
+                sub     l
+                ld      l, a
+                ld      a, d
+                sbc     a, h
+                ld      h, a
+
+L3:                                     ; ...
+                ld      (vJ), hl
+                ex      de, hl
+                ld      hl, (Gap)
+                add     hl, de
+                ld      (word_5CB), hl
+                ld      a, 0Ch
+                call    Compare
+                jp      p, L5
+                ld      hl, (vJ)
+                ex      de, hl
+                ld      hl, (word_5CB)
+                call    Swap
+                ld      hl, (vJ)
+                ex      de, hl
+                ld      hl, (Gap)
+                ld      a, e
+                sub     l
+                ld      l, a
+                ld      a, d
+                sbc     a, h
+                ld      h, a
+                jp      m, L5
+                or      l
+                jp      z, L5
+                jp      L3
+; ---------------------------------------------------------------------------
+
+L5:                                     ; ...
+                ld      hl, (Scount)
+                ex      de, hl
+                ld      hl, (vI)
+                inc     hl
+                ld      a, e
+                sub     l
+                ld      a, d
+                sbc     a, h
+                jp      p, L2
+                ld      hl, (Gap)
+                jp      L0
+; ---------------------------------------------------------------------------
+
+Done:                                   ; ...
+                ld      hl, Order
+                ld      (NextT), hl
+                ld      c, 4
+                ld      hl, 0
+                ld      (TotalSize), hl
+                ld      (TotalFiles), hl
+
+Entry:                                  ; ...
+                ld      hl, (Count)
+                dec     hl
+                ld      a, l
+                or      h
+                jp      z, OKprnt
+                push    bc
+                ld      c, 0Bh
+                call    BDOS
+                or      a
+                jp      z, NoBrk
+                jp      Exit
+; ---------------------------------------------------------------------------
+
+NoBrk:                                  ; ...
+                ld      hl, (NextT)
+                ld      a, 0Bh
+                call    Compr
+                pop     bc
+                jp      nz, OKprnt
+                inc     hl
+                inc     hl
+                ld      (NextT), hl
+                ld      hl, (Count)
+                dec     hl
+                ld      (Count), hl
+                jp      Entry
+
+; =============== S U B R O U T I N E =======================================
+
+
+GoHL:                                   ; ...
+                jp      (hl)
+; End of function GoHL
+
+; ---------------------------------------------------------------------------
+
+OKprnt:                                 ; ...
+                push    bc
+                ld      hl, (NextT)
+                ld      e, (hl)
+                inc     hl
+                ld      d, (hl)
+                inc     hl
+                ld      (NextT), hl
+                ex      de, hl
+                ld      b, 8
+                call    TypeIt
+                ld      a, 20h ; ' '
+                call    Type
+                ld      b, 3
+                call    TypeIt
+                ld      bc, 0Bh
+                xor     a
+                sbc     hl, bc
+                ld      de, 5Ch ; '\'
+                push    de
+                ld      (de), a
+                inc     de
+                ldir
+                pop     de
+                ld      c, 35
+                call    BDOS
+                ld      hl, (fcb2al)
+                call    sub_47E
+                ex      de, hl
+                ld      hl, (TotalSize)
+                add     hl, de
+                ld      (TotalSize), hl
+                ld      hl, (TotalFiles)
+                inc     hl
+                ld      (TotalFiles), hl
+                ex      de, hl
+                call    DecPrt
+                ld      a, 6Bh ; 'k'
+                call    Type
+                ld      hl, (Count)
+                dec     hl
+                ld      a, l
+                or      h
+                jp      z, PrtOtl
+                ld      (Count), hl
+                pop     bc
+                dec     c
+                push    af
+                call    nz, Separator
+                pop     af
+                call    z, CrLf
+                jp      Entry
+
+; =============== S U B R O U T I N E =======================================
+
+
+DecPrt:                                 ; ...
+                sub     a
+                ld      (LZflag), a
+                ld      de, 0FC18h      ; -1000
+                call    sub_426
+                ld      de, 0FF9Ch      ; -100
+                call    sub_426
+                ld      de, 0FFF6h      ; -10
+                call    sub_426
+                ld      a, 30h ; '0'
+                add     a, l
+                jp      Type
+; End of function DecPrt
+
+
+; =============== S U B R O U T I N E =======================================
+
+
+sub_426:                                ; ...
+                ld      b, 30h ; '0'
+
+DigLp:                                  ; ...
+                push    hl
+                add     hl, de
+                jp      nc, DigEx
+                pop     af
+                inc     b
+                jp      DigLp
+; ---------------------------------------------------------------------------
+
+DigEx:                                  ; ...
+                pop     hl
+                ld      a, b
+                cp      30h ; '0'
+                jp      nz, DigNz
+                ld      a, (LZflag)
+                or      a
+                ld      a, 30h ; '0'
+                jp      nz, Type
+                ld      a, (SupSpc)
+                or      a
+                ret     z
+                jp      Space
+; ---------------------------------------------------------------------------
+
+DigNz:                                  ; ...
+                ld      (LZflag), a
+                jp      Type
+; End of function sub_426
+
+; ---------------------------------------------------------------------------
+
+PrtOtl:                                 ; ...
+                xor     a
+                ld      (SupSpc), a
+                call    CrLf
+                ld      de, aTotalOf    ; " : Total of $"
+                ld      c, 9
+                call    BDOS
+                ld      hl, (TotalSize)
+                call    DecPrt
+                ld      de, aKIn        ; "k in $"
+                ld      c, 9
+                call    BDOS
+                ld      hl, (TotalFiles)
+                call    DecPrt
+                ld      de, aFiles      ; " files$"
+                ld      c, 9
+                call    BDOS
+; START OF FUNCTION CHUNK FOR ERexit
+
+loc_47B:                                ; ...
+                jp      Exit
+; END OF FUNCTION CHUNK FOR ERexit
+
+; =============== S U B R O U T I N E =======================================
+
+
+sub_47E:                                ; ...
+                ld      c, 8
+                ld      b, 10h
+                xor     a
+
+loc_483:                                ; ...
+                add     hl, hl
+                rla
+                cp      c
+                jr      c, loc_48A
+                inc     l
+                sub     c
+
+loc_48A:                                ; ...
+                djnz    loc_483
+                or      a
+                ret     z
+                inc     hl
+                ret
+; End of function sub_47E
+
+; ---------------------------------------------------------------------------
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+aTotalOf:       db ' : Total of $'      ; ...
+aKIn:           db 'k in $'             ; ...
+aFiles:         db ' files$'            ; ...
+aWith:          db 'with $'
+aSpace:         db 'k space remaining.$'
+
+; =============== S U B R O U T I N E =======================================
+
+
+Separator:                              ; ...
+                call    Space
+                ld      a, 3Ah ; ':'
+                call    Type
+; End of function Separator
+
+
+; =============== S U B R O U T I N E =======================================
+
+
+Space:                                  ; ...
+                ld      a, 20h ; ' '
+; End of function Space
+
+
+; =============== S U B R O U T I N E =======================================
+
+
+Type:                                   ; ...
+                push    bc
+                push    de
+                push    hl
+                ld      e, a
+                ld      c, 2
+                call    BDOS
+                pop     hl
+                pop     de
+                pop     bc
+                ret
+; End of function Type
+
+
+; =============== S U B R O U T I N E =======================================
+
+
+TypeIt:                                 ; ...
+                ld      a, (hl)
+                call    Type
+                inc     hl
+                dec     b
+                jp      nz, TypeIt
+                ret
+; End of function TypeIt
+
+
+; =============== S U B R O U T I N E =======================================
+
+
+Cinput:                                 ; ...
+                ld      hl, (BIOSaddr)
+                ld      l, 9
+                call    GoHL
+                and     7Fh
+                ret
+; End of function Cinput
+
+
+; =============== S U B R O U T I N E =======================================
+
+
+CrLf:                                   ; ...
+                ld      a, (LineCounter)
+                inc     a
+                cp      23
+                jp      c, NewLine
+                ld      de, aAnyKey     ; "\r\n(Strike any key to continue)$"
+                ld      c, 9
+                call    BDOS
+                call    Cinput
+                sub     a
+
+NewLine:                                ; ...
+                ld      (LineCounter), a
+                ld      a, 0Dh
+                call    Type
+                ld      a, 0Ah
+                call    Type
+                ld      c, 4
+                ret
+; End of function CrLf
+
+; ---------------------------------------------------------------------------
+aAnyKey:        db 0Dh,0Ah              ; ...
+                db '(Strike any key to continue)$'
+
+; =============== S U B R O U T I N E =======================================
+
+
+Compr:                                  ; ...
+                push    hl
+                ld      e, (hl)
+                inc     hl
+                ld      d, (hl)
+                inc     hl
+                ld      c, (hl)
+                inc     hl
+                ld      b, (hl)
+                ex      de, hl
+                ld      e, a
+
+CmpLp:                                  ; ...
+                ld      a, (bc)
+                cp      (hl)
+                inc     hl
+                inc     bc
+                jp      nz, NoteQl
+                dec     e
+                jp      nz, CmpLp
+
+NoteQl:                                 ; ...
+                pop     hl
+                ret
+; End of function Compr
+
+
+; =============== S U B R O U T I N E =======================================
+
+
+Swap:                                   ; ...
+                ld      bc, MPMflag
+                add     hl, hl
+                add     hl, bc
+                ex      de, hl
+                add     hl, hl
+                add     hl, bc
+                ld      c, (hl)
+                ld      a, (de)
+                ex      de, hl
+                ld      (hl), c
+                ld      (de), a
+                inc     hl
+                inc     de
+                ld      c, (hl)
+                ld      a, (de)
+                ex      de, hl
+                ld      (hl), c
+                ld      (de), a
+                ret
+; End of function Swap
+
+
+; =============== S U B R O U T I N E =======================================
+
+
+Compare:                                ; ...
+                ld      bc, MPMflag
+                add     hl, hl
+                add     hl, bc
+                ex      de, hl
+                add     hl, hl
+                add     hl, bc
+                ex      de, hl
+                ld      c, (hl)
+                inc     hl
+                ld      b, (hl)
+                ex      de, hl
+                ld      e, (hl)
+                inc     hl
+                ld      d, (hl)
+                ex      de, hl
+                ld      e, a
+
+CmpLpe:                                 ; ...
+                ld      a, (bc)
+                cp      (hl)
+                inc     bc
+                inc     hl
+                ret     nz
+                dec     e
+                jp      nz, CmpLpe
+                ret
+; End of function Compare
+
+
+; =============== S U B R O U T I N E =======================================
+
+
+ERexit:                                 ; ...
+
+; FUNCTION CHUNK AT 047B SIZE 00000003 BYTES
+
+                pop     de
+
+ERexit1:                                ; ...
+                ld      c, 9
+                call    BDOS
+                call    CrLf
+                ld      de, aTotalOf    ; " : Total of $"
+                ld      c, 9
+                call    BDOS
+                xor     a
+                ld      (SupSpc), a
+                jp      loc_47B
+; ---------------------------------------------------------------------------
+
+Exit:                                   ; ...
+                ld      hl, (Stack)
+                ld      sp, hl
+                ret
+; End of function ERexit
+
+; ---------------------------------------------------------------------------
+vI:             dw 0                    ; ...
+vJ:             dw 0                    ; ...
+word_5CB:       dw 0                    ; ...
+Gap:            dw 0                    ; ...
+BlkShift:       db 0                    ; ...
+BlkMask:        db 0                    ; ...
+BlockMax:       dw 0                    ; ...
+DirMax:         dw 0                    ; ...
+TotalSize:      dw 0                    ; ...
+TotalFiles:     dw 0                    ; ...
+LineCounter:    db 0                    ; ...
+TBloc:          dw 0                    ; ...
+NextT:          dw 0                    ; ...
+Count:          dw 0                    ; ...
+Scount:         dw 0                    ; ...
+                db    0
+SupSpc:         db 0FFh                 ; ...
+                db  80h
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db  1Ah
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+                db    0
+Stack:          dw 0                    ; ...
+SopFlg:         db 0                    ; ...
+CPMuser:        db 0                    ; ...
+                db    0
+                db    0
+CPMversion:     db 0                    ; ...
+MPMflag:        db    0                 ; ...
+LZflag:         db 0                    ; ...
+Order:          db    0                 ; ...
+                end

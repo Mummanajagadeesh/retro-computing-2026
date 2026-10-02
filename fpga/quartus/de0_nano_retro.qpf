@@ -1,0 +1,6 @@
+# -------------------------------------------------------------------------- #
+# Quartus Prime project file -- open this in Quartus Prime Lite 20.1
+# -------------------------------------------------------------------------- #
+QUARTUS_VERSION = "20.1.0"
+DATE = "12:00:00  SEPTEMBER 16, 2026"
+PROJECT_REVISION = "de0_nano_retro"

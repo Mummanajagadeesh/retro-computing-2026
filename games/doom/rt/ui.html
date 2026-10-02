@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DOOM on dual-issue RV32IM — LIVE RTL sim</title>
+<style>
+  :root { color-scheme: dark; }
+  body { background:#0b0d10; color:#d7dce2; font-family:ui-monospace,Menlo,Consolas,monospace; margin:0; padding:16px; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  .sub { color:#8b949e; font-size:12px; margin-bottom:12px; }
+  .wrap { display:flex; gap:16px; flex-wrap:wrap; }
+  canvas { image-rendering:pixelated; width:640px; height:400px; background:#000; border:1px solid #30363d; border-radius:6px; }
+  .panel { min-width:300px; max-width:520px; flex:1; }
+  .stats { display:grid; grid-template-columns:auto 1fr; gap:2px 12px; background:#11151a; border:1px solid #30363d; border-radius:6px; padding:10px 12px; font-size:13px; margin-bottom:12px; }
+  .stats b { color:#7ee787; font-weight:normal; text-align:right; }
+  #con { background:#000; border:1px solid #30363d; border-radius:6px; padding:8px; height:300px; overflow-y:auto; white-space:pre-wrap; font-size:11px; line-height:1.35; color:#a5d6ff; }
+  .keys { font-size:12px; color:#8b949e; margin-top:10px; line-height:1.6; }
+  kbd { background:#21262d; border:1px solid #30363d; border-radius:4px; padding:0 5px; color:#d7dce2; }
+  .live { color:#7ee787; } .dead { color:#f85149; }
+</style>
+</head>
+<body>
+<h1>DOOM on a dual-issue RV32IM core — <span id="live" class="dead">● connecting…</span></h1>
+<div class="sub">Live frames from the Verilator RTL simulation (untimed C++ TB, no --timing). One sim frame = one game tic. Keys inject into the RTL keyboard bridge in real time.</div>
+<div class="wrap">
+  <div><canvas id="scr" width="320" height="200"></canvas></div>
+  <div class="panel">
+    <div class="stats">
+      <span>frame / tic</span><b id="s_n">–</b>
+      <span>sim cycles</span><b id="s_cyc">–</b>
+      <span>retired</span><b id="s_ret">–</b>
+      <span>sim speed</span><b id="s_mhz">–</b>
+      <span>game rate</span><b id="s_tps">–</b>
+      <span>CPI / IPC</span><b id="s_cpi">–</b>
+    </div>
+    <div id="con"></div>
+    <div class="keys">
+      <kbd>↑↓←→</kbd> move/turn &nbsp;<kbd>Ctrl</kbd> fire &nbsp;<kbd>Space</kbd> use/open &nbsp;<kbd>Shift</kbd> run<br>
+      <kbd>,</kbd><kbd>.</kbd> strafe &nbsp;<kbd>1</kbd>–<kbd>7</kbd> weapons &nbsp;<kbd>Tab</kbd> map &nbsp;<kbd>Enter</kbd>/<kbd>Esc</kbd> menus<br>
+      Click the page once to capture keys. Sim runs ~2–3 tics/s (slow-motion live — the FPGA would do 60).
+    </div>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('scr'), cx = cv.getContext('2d');
+const img = cx.createImageData(320, 200);
+let PAL = null, lastN = -1;
+
+fetch('/api/palette').then(r => r.arrayBuffer()).then(b => { PAL = new Uint8Array(b); });
+
+function draw(indices) {
+  if (!PAL) return;
+  const d = img.data;
+  for (let i = 0, j = 0; i < indices.length; i++, j += 4) {
+    const p = indices[i] * 3;
+    d[j] = PAL[p]; d[j+1] = PAL[p+1]; d[j+2] = PAL[p+2]; d[j+3] = 255;
+  }
+  cx.putImageData(img, 0, 0);
+}
+function b64ToU8(b64) {
+  const s = atob(b64), o = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) o[i] = s.charCodeAt(i);
+  return o;
+}
+const $ = id => document.getElementById(id);
+const con = $('con');
+async function poll() {
+  try {
+    const r = await fetch('/api/state', {cache: 'no-store'});
+    const st = await r.json();
+    const el = $('live');
+    if (st.ended) { el.textContent = '● sim ended'; el.className = 'dead'; }
+    else if (st.connected) { el.textContent = '● LIVE'; el.className = 'live'; }
+    else { el.textContent = '● waiting for sim…'; el.className = 'dead'; }
+    if (st.n !== lastN && st.n >= 0) { lastN = st.n; draw(b64ToU8(st.frame_b64)); }
+    $('s_n').textContent = st.n >= 0 ? st.n + ' / ' + (st.n + 1) : 'booting…';
+    $('s_cyc').textContent = Number(st.cyc).toLocaleString('en-US');
+    $('s_ret').textContent = Number(st.instret).toLocaleString('en-US');
+    $('s_mhz').textContent = st.mhz ? st.mhz.toFixed(2) + ' MHz' : '–';
+    $('s_tps').textContent = st.tps ? st.tps.toFixed(2) + ' tics/s (' + (st.tps/35*100).toFixed(1) + '% realtime)' : '–';
+    $('s_cpi').textContent = st.cpi ? st.cpi.toFixed(4) + ' / ' + st.ipc.toFixed(4) : '–';
+    if (st.console && st.console !== con._last) {
+      con._last = st.console;
+      con.textContent = st.console;
+      con.scrollTop = con.scrollHeight;
+    }
+  } catch (e) { /* sim/bridge restarting */ }
+}
+setInterval(poll, 250); poll();
+
+// ---- keyboard -> doomkeys ----
+const MAP = {
+  ArrowUp:173, ArrowDown:175, ArrowLeft:172, ArrowRight:174,
+  ControlLeft:163, ControlRight:163, Space:162,
+  ShiftLeft:182, ShiftRight:182, AltLeft:184, AltRight:184,
+  Enter:13, Escape:27, Tab:9,
+  Digit1:49, Digit2:50, Digit3:51, Digit4:52, Digit5:53, Digit6:54, Digit7:55,
+  Comma:160, Period:161, Minus:45, Equal:61,
+  KeyY:121, KeyN:110, KeyP:112,
+};
+const down = new Set();
+async function send(code, pressed) {
+  const key = MAP[code];
+  if (key === undefined) return;
+  try {
+    await fetch('/api/key', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({key, pressed})});
+  } catch (e) {}
+}
+window.addEventListener('keydown', e => {
+  if (MAP[e.code] === undefined || e.repeat || down.has(e.code)) return;
+  e.preventDefault();
+  down.add(e.code);
+  send(e.code, true);
+});
+window.addEventListener('keyup', e => {
+  if (MAP[e.code] === undefined) return;
+  e.preventDefault();
+  down.delete(e.code);
+  send(e.code, false);
+});
+window.addEventListener('blur', () => { // safety: release everything
+  down.forEach(c => send(c, false));
+  down.clear();
+});
+</script>
+</body>
+</html>

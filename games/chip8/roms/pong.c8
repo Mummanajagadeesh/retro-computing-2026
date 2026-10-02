@@ -1,0 +1,207 @@
+; pong.c8 -- 1-player PONG vs the AI for the retro_fpga console.
+; You are the RIGHT paddle: W = up, S = down (chip-8 keys 5/8).
+; Scores are hex digits (0-F) top-center; divider line at y=7.
+;
+; V0=ballx V1=bally V2=xdir(0=R,1=L) V3=ydir(0=D,1=U) V4=padL V5=padR
+; V6=scoreL V7=scoreR VA/VB=scratch VC=AI divider VD=ball divider/serve wait
+
+    org 0x200
+    dw 0x00E0
+    dw 0x6000, 0x6100, 0x6200, 0x6300
+    dw 0x6410, 0x6510     ; paddles y = 16
+    dw 0x6600, 0x6700     ; scores 0
+    dw 0x6C00, 0x6D00     ; dividers 0
+    ; divider line at y=7: eight 8x1 draws
+    dw 0xA000+divrow
+    dw 0x6000, 0x6107, 0xD011
+    dw 0x6008, 0xD011
+    dw 0x6010, 0xD011
+    dw 0x6018, 0xD011
+    dw 0x6020, 0xD011
+    dw 0x6028, 0xD011
+    dw 0x6030, 0xD011
+    dw 0x6038, 0xD011
+    ; initial "0","0" scores
+    dw 0xF629, 0x6A1A, 0x6B01, 0xDAB5
+    dw 0xF729, 0x6A23, 0xDAB5
+    dw 0x2000+serve
+    dw 0xA000+ballr
+    dw 0xD012
+    dw 0xA000+padr
+    dw 0x6A02, 0xDA48
+    dw 0x6A3C, 0xDA58
+loop:
+    ; ---- erase all at current pos ----
+    dw 0xA000+ballr
+    dw 0xD012
+    dw 0xA000+padr
+    dw 0x6A02, 0xDA48
+    dw 0x6A3C, 0xDA58
+    ; ---- player: W/5 up, S/8 down, bounds 8..24 ----
+    dw 0xE59E
+    dw 0x1000+chk_down
+    dw 0x3508
+    dw 0x1000+chk_down
+    dw 0x75FF
+    dw 0x1000+chk_down
+chk_down:
+    dw 0xE89E
+    dw 0x1000+no_input
+    dw 0x3518
+    dw 0x1000+no_input
+    dw 0x7501
+no_input:
+    ; ---- AI: every 2nd loop, padL tracks bally with deadband ----
+    dw 0x7C01
+    dw 0x3C02
+    dw 0x1000+no_ai
+    dw 0x6C00
+    dw 0x8A40             ; VA = padL
+    dw 0x7A04             ; VA += 4 (mid)
+    dw 0x8A15             ; VA -= bally, VF = (mid >= bally)
+    dw 0x3F01
+    dw 0x1000+ai_down
+    dw 0x3A00             ; VA == 0: aligned, stay
+    dw 0x1000+ai_upchk
+    dw 0x1000+no_ai
+ai_upchk:
+    dw 0x3A01             ; VA == 1: close enough, stay
+    dw 0x1000+ai_up
+    dw 0x1000+no_ai
+ai_up:
+    dw 0x3408
+    dw 0x1000+no_ai
+    dw 0x74FF
+    dw 0x1000+no_ai
+ai_down:
+    dw 0x3418
+    dw 0x1000+no_ai
+    dw 0x7401
+no_ai:
+    ; ---- ball: every 2nd loop ----
+    dw 0x7D01
+    dw 0x3D02
+    dw 0x1000+no_ball
+    dw 0x6D00
+    ; move x, score at the edges
+    dw 0x3200             ; xdir == 0 (right)?
+    dw 0x1000+bl
+    dw 0x7001
+    dw 0x303E             ; x == 62?
+    dw 0x1000+bx_done
+    dw 0x2000+score_l
+    dw 0x1000+bx_done
+bl:
+    dw 0x70FF
+    dw 0x3000
+    dw 0x1000+bx_done
+    dw 0x2000+score_r
+bx_done:
+    ; left paddle: xdir==L, x==4, y overlaps padL..padL+7
+    dw 0x3201
+    dw 0x1000+chk_r
+    dw 0x3004
+    dw 0x1000+chk_r
+    dw 0x8A10, 0x7A01, 0x8A45
+    dw 0x3F01
+    dw 0x1000+chk_r
+    dw 0x8A40, 0x7A08, 0x8A15
+    dw 0x3F01
+    dw 0x1000+chk_r
+    dw 0x3A00
+    dw 0x1000+bounce_l
+    dw 0x1000+chk_r
+bounce_l:
+    dw 0x6200
+    dw 0x6B03, 0xFB18
+    dw 0x1000+chk_y
+chk_r:
+    dw 0x3200
+    dw 0x1000+chk_y
+    dw 0x303A             ; x == 58?
+    dw 0x1000+chk_y
+    dw 0x8A10, 0x7A01, 0x8A55
+    dw 0x3F01
+    dw 0x1000+chk_y
+    dw 0x8A50, 0x7A08, 0x8A15
+    dw 0x3F01
+    dw 0x1000+chk_y
+    dw 0x3A00
+    dw 0x1000+bounce_r
+    dw 0x1000+chk_y
+bounce_r:
+    dw 0x6201
+    dw 0x6B03, 0xFB18
+chk_y:
+    ; walls + y move: up range stops at 8, down at 30
+    dw 0x3301
+    dw 0x1000+wy_down
+    dw 0x3108
+    dw 0x1000+my_up
+    dw 0x6300
+    dw 0x6B02, 0xFB18
+    dw 0x7101
+    dw 0x1000+no_ball
+my_up:
+    dw 0x71FF
+    dw 0x1000+no_ball
+wy_down:
+    dw 0x3300
+    dw 0x1000+no_ball
+    dw 0x311E             ; y == 30?
+    dw 0x1000+my_down
+    dw 0x6301
+    dw 0x6B02, 0xFB18
+    dw 0x71FF
+    dw 0x1000+no_ball
+my_down:
+    dw 0x7101
+    dw 0x1000+no_ball
+no_ball:
+    ; ---- draw all at new pos ----
+    dw 0xA000+ballr
+    dw 0xD012
+    dw 0xA000+padr
+    dw 0x6A02, 0xDA48
+    dw 0x6A3C, 0xDA58
+    dw 0x1000+loop
+
+score_l:                  ; ball passed the right edge
+    dw 0xF629
+    dw 0x6A1A, 0x6B01
+    dw 0xDAB5             ; erase old digit
+    dw 0x7601
+    dw 0xF629, 0xDAB5     ; draw new digit
+    dw 0x6B06, 0xFB18
+    dw 0x2000+serve
+    dw 0x00EE
+score_r:
+    dw 0xF729
+    dw 0x6A23, 0x6B01
+    dw 0xDAB5
+    dw 0x7701
+    dw 0xF729, 0xDAB5
+    dw 0x6B06, 0xFB18
+    dw 0x2000+serve
+    dw 0x00EE
+serve:
+    dw 0x601F, 0x6112     ; ball (31, 18)
+    dw 0xC803             ; random serve direction
+    dw 0x8806
+    dw 0x82F0
+    dw 0x8806
+    dw 0x83F0
+    dw 0x6D1E, 0xFD15     ; pause 30 ticks
+serve_wait:
+    dw 0xFD07
+    dw 0x3D00
+    dw 0x1000+serve_wait
+    dw 0x6D00
+    dw 0x00EE
+
+ballr:
+    db 0xC0, 0xC0
+padr:
+    db 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0
+divrow:
+    db 0xFF

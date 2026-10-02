@@ -1,0 +1,5 @@
+Vendored from RunCPM (MIT, Marcelo Dantas)
+commit 79396be665d6ec263a2728b20b177f4149647ed8 (2026-09-25)
+URL https://github.com/MockbaTheBorg/RunCPM
+Pristine: zero modifications; the port lives in
+../abstraction_retro.h ../shim.c ../cpm_main.c ../mkdisk.py

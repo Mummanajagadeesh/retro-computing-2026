@@ -1,0 +1,9 @@
+# build + sim outputs (regenerable; run scripts recreate them)
+fpga/sim_out/
+fpga/tb/obj_*/
+games/*/build/
+hex/
+fpga/sim_out_*/
+*.log
+games/*/*.elf
+!games/doom/doom.elf
